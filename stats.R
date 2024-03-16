@@ -81,18 +81,20 @@ t1 <-
   
   do.call( rbind.data.frame, . ) %>%
   pivot_wider( names_from = "event", values_from = "val" ) %>%
-  
-  gt() %>%
-  cols_align( columns = -1, align = "center" ) %>%
-  cols_label(
-    var ~ "",
-    pre ~ "Pre-surgery",
-    post ~ "Post-surgery"
-  ) %>%
-  tab_source_note( source_note = "LEDD = levodopa equivalent daily dose, BMI = body mass index, BDI-II = Beck Depression Inventory, second edition, DRS-2 = Mattis Dementia Rating Scale, second edition, values represent means ± standard deviations for contiuous variables and frequencies for nominal variables." )
+  mutate( post = ifelse( var %in% c("Education (years)","Sex (females/males)","Disease duration (years)"), "-", post ) )
+
+#  gt() %>%
+#  cols_align( columns = -1, align = "center" ) %>%
+#  cols_label(
+#    var ~ "",
+#    pre ~ "Pre-surgery",
+#    post ~ "Post-surgery"
+#  ) %>%
+#  tab_source_note( source_note = "LEDD = levodopa equivalent daily dose, BMI = body mass index, BDI-II = Beck Depression Inventory, second edition, DRS-2 = Mattis Dementia Rating Scale, second edition, values represent means ± standard deviations for contiuous variables and frequencies for nominal variables." )
 
 # save it
-gtsave( t1, here("tabs","descriptives.docx") )
+#gtsave( t1, here("tabs","descriptives.docx") )
+write.table( t1, file = here("tabs","descriptives.csv"), sep = ";", row.names = F, quote = F )
 
 
 # HYPOTHESES TESTING ----
@@ -105,17 +107,40 @@ d3 <-
 # compute correlations
 corr <- cor.ci( d3, p = .05, method = "pearson", plot = F )
 
-# 
+# prepare jpeg device for figure saving
+jpeg( here("figs","corrmat.jpg"), units = "in", width = 10.9, height = 10.9, res = 300, quality = 100 )
+
+# plot pairs
 pairs.panels(
   d3,
   method = "pearson", # correlation method
   lm = T, ci = T, alpha = .05,
-  hist.col = "#00AFBB",
-  breaks = 15,
-  stars = T,
+  hist.col = "#00AFBB", breaks = 15, # histogram
+  stars = T, scale = F, cex.cor = .6,
   density = F, # no show density plots
-  ellipses = T # show correlation ellipses
+  ellipses = T, # show correlation ellipses
+  cex = 2, cex.axis = 1.5
 )
+
+# save it
+dev.off()
+
+# prepare a table with correlation results
+t2 <-
   
+  with( corr, cbind( ci, rho = rho[ lower.tri(rho) ] ) ) %>%
+  apply( ., 2, rprint, 3 ) %>%
+  apply( ., 2, function(x) sub( ".", ",", x, fixed = T ) ) %>%
+  as.data.frame() %>%
+  mutate( pair = rownames(corr$ci), .before = 1 ) %>%
+  relocate( p, .after = 1 ) %>%
+  relocate( rho, .after = 1 )
+
+# save it
+write.table( t2, file = here("tabs","corrs.csv"), sep = ";", row.names = F, quote = F )
 
 
+# SESSION INFO -----
+
+# write the sessionInfo() into a .txt file
+capture.output( sessionInfo(), file = "stats_envir.txt" )
