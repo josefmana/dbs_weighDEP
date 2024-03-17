@@ -87,19 +87,20 @@ d2 <-
   d1 %>%
   
   # calculate postop. gains
-  mutate( across( c("stimtime_years","ledd_mg","weight","bdi","drsii"), ~ ifelse( event == "pre", -.x, .x ) ) ) %>%
+  mutate( across( c("stimtime_years","ledd_mg","weight","bmi","bdi","drsii"), ~ ifelse( event == "pre", -.x, .x ) ) ) %>%
   group_by(id) %>%
   summarise(
     time = sum(stimtime_years),
     ledd_gain = sum(ledd_mg),
     weight_gain = sum(weight),
+    bmi_gain = sum(bmi),
     bdi_gain = sum(bdi),
     drs_gain = sum(drsii)
   ) %>%
   
   # add pre-surgery data
   left_join( d1[ d1$event == "pre", c("id","ledd_mg","weight","bdi","drsii","sex","hy","type_pd","asym_park") ] ) %>%
-  rename( "ledd_pre" = "ledd_mg", "weight_pre" = "weight", "bdi_pre" = "bdi", "drs_pre" = "drsii" ) %>%
+  rename( "ledd_pre" = "ledd_mg", "weight_pre" = "weight", "bmi_pre" = "bmi", "bdi_pre" = "bdi", "drs_pre" = "drsii" ) %>%
   mutate( weight_increased = ifelse( weight_gain > 0, 1, 0 ) )
 
 # DATA SAVE ----

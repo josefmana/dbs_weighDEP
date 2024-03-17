@@ -1,0 +1,143 @@
+---
+title: "Asociace mezi tloustnutím a zesmutměním ~jeden rok po DBS"
+author: "Jožin"
+date: "`r Sys.Date()`"
+number-sections: true
+format:
+  docx:
+    echo: false
+    df-print: kable
+bibliography: references.bib
+---
+
+```{r}
+#| label: envir
+#| warning: false
+
+# clear environment
+rm( list = ls() )
+
+# set-up libraries
+library(here)
+library(tidyverse)
+library(gt)
+
+d <- read.csv( here("_data","wide_df.csv"), sep = "," )
+t1 <- read.csv( here("tabs","descriptives.csv"), sep = "\t" )
+t2 <- read.csv( here("tabs","corrs.csv"), sep = "\t" )
+
+rprint <- function( x, dec = 2 ) sprintf( paste0("%.",dec,"f"), round( x, dec ) ) # printing rounded numbers
+toczech <- function(x) gsub( ".", ",", x, fixed = T ) # change decimal dot to comma
+
+```
+
+## Statistická analýza
+
+Spojité proměnné byly popsány průměrem a směrodatnou odchylkou zvlášť před a po operaci. Nulová hypotéza žádné průměrné pooperační změny byla testována párovým t-testem pro neuropsychologické proměnné, klinické proměnné a tělesnou hmotnost. Abychom charakterizovali vztah mezi pooperačními změnami (příbytkem či úbytkem) neuropsychologických proměnných, medikace a tělesnou hmotností jsme nejprve spočítali pooperační změnu každé proměnné (jako pooperační hodnota minus předoperační hodnota) a následně jsme spočítali Pearsonovy korelace ($r_{XY}$) pro každý pár těchto rozdílových skórů (proměnné *X* a *Y*). Statistický test nulové hypotézy $r_{XY} = 0$ pro každý pár korelací jsme testovali pomocí p-hodnoty spočtené t-testem na základě testové statistiky:
+
+$t = \frac{r_{XY} \sqrt(n-2)}{\sqrt(1-r_{XY}^2)}$
+
+se standardní chybou:
+
+$se = \sqrt(\frac{1-r_{XY}^2}{n-2})$,
+
+kde *n* = počet pozorování. Výsledek této korelační analýzy pro pár proměnných změna BDI-II a změna hmotnosti po operaci tvoří estimand pro dílčí hypotézu $VH_2$. Průměrnou pooperační změnu BDI-II na každý kilogram pooperační změny hmotnosti jsme spočítali regresí pooperační změny BDI-2 na pooperační změnu hmotnosti metodou nejmenších čtverců s QR dekompozicí.
+
+Abychom otestovali hypotézu $VH_1$ jsme nejprve rozdělili data set na skupinu pacientů, kteří rok po operaci přibyli na váze (tj. pacienti, u nichž změna hmotnosti > 0) a pacienty, kteří na váze nepřibyli (tj. pacienti, u nichž změna hmotnosti $\leq$ 0). Následně jsme spočítali t-test pro nezávislé skupiny s Welchovou approximací stupňů volnosti pro nulovou hypotézu $\bar{BDI}_0 = \bar{BDI}_1$ (kde $\bar{BDI}$ označuje střední hodnotu pooperační změny BDI-II pro *0* označující skupinu pacientů, kteří nepřibrali na váze a *1* označující skupinu pacientů, kteří na váze přibrali).
+
+Napříč analýzami bylo za výsledek statisticky významně odlišný od nulového hypotézy považováno p < 0,05. Analýzy byly provedeny v statistickém programovacím jazyku R (verze `r with( version, paste(major,minor,sep=".") )`) za použití balíčku "psych" [@psych].
+
+## Výsledky
+
+```{r}
+#| label: outlier
+
+x <- d[ d$drs_gain != 23, "drs_gain" ]
+t <- t.test( x = x, mu = 0, alternative = "two.sided" )
+
+prnt <-
+  
+  with(
+    t,
+    paste0(
+      rprint(estimate),", 95% interval spolehlivosti (IS) [",
+      paste( rprint(conf.int), collapse = "; " ), " ], t(",
+      parameter, ") = ", rprint(statistic), ", p = ", rprint(p.value,3)
+    ) %>% toczech(.)
+  )
+```
+
+### Popis vzorku
+
+Výzkoumný vzorek čítal `r nrow(d)` pacientů s kompletním vyšetřením depresivních projevů a údajích o hmotnosti před operací a při roční prohlídce po operaci pro zahájení léčby DBS. Popis vzorku prezentujeme v @tbl-desc. U pacientů došlo po operaci k výraznému snížení LEDD a statisticky významnému zvýšení hmotnosti a BMI. Po operaci pacienti rovněž udávali relativně menší množství depresivních symptomů v porovnání se stavem před operací, tento rozdíl ovšem nedosáhl hladiny statistické významnosti. Ve vzorku jsme nepozorovali zřetelné snížení či zvýšení průměrného kognitivního výkonu. Tento poslední výsledek ovšem mohl být ovlivněn výrazným outlierem se změnou DRS-2 třiadvacet bodů po operaci (viz @fig-corr), avšak pooperační DRS-2 se statisticky významně nelišilo od předoperačního DRS-2 ani po vyloučení tohoto pozorování (průměrná pooperační změna = `r prnt`)
+
+
+```{r}
+#| label: tbl-desc
+#| tbl-cap: "Popis vzorku"
+
+t1 <-
+  
+  t1 %>%
+  
+  mutate( across( everything(), ~ toczech(.x) ) ) %>%
+  mutate(
+    var =
+      case_when(
+        var == "Time from surgery (years)" ~ "Čas od operace (roky)",
+        var == "Age (years)" ~ "Věk (roky)",
+        var == "Education (years)" ~ "Vzdělání (roky)",
+        var == "Sex (females/males)" ~ "Gender (ženy/muži)",
+        var == "Disease duration (years)" ~ "Trvání nemoci (roky)",
+        var == "LEDD (mg)" ~ "LEDD (mg)",
+        var == "Weight (kg)" ~ "Hmotnost (kg)",
+        var == "BMI (kg/m2)" ~ "BMI (kg/m2)",
+        var == "BDI-II (range 0-63)" ~ "BDI-II (rozsah 0-63)",
+        var == "DRS-2 (range 0-144)" ~ "DRS-2 (rozsah 0-144)"
+      )
+  ) %>%
+  
+  gt() %>%
+  cols_align( columns = -1, align = "center" ) %>%
+  tab_spanner( label = "Popisná statistika", columns = c("pre","post"), gather = F ) %>%
+  tab_spanner( label = "Inferenční statistika", columns = c("change","test"), gather = F ) %>%
+  cols_label(
+    var ~ "",
+    pre ~ "Před operací",
+    post ~ "Po operaci",
+    change ~ "Pooperační změna",
+    test ~ "Test nulové hypotézy"
+    ) %>%
+  tab_footnote(
+    locations = cells_column_labels( columns = c("pre","post") ),
+    footnote = "Hodnoty reprezentují průměr ± směrodatnou odchylku pro spojité proměnné a počty pro nominální proměnné"
+  ) %>%
+  tab_footnote(
+    locations = cells_column_labels( columns = "change" ),
+    footnote = "Hodnoty reprezentují odhad průměrného rozdílu [95% interval spolehlivosti]"
+  ) %>%
+  tab_source_note( source_note = "LEDD = ekvivalentní denní dávka L-DOPA, BMI = body mass index, BDI-II = Beckův inventář depresivity, druhá edice, DRS-2 = Mattisova škála demence, druhá edice" )
+
+gtsave( t1, here("tabs","descriptives.docx") ) # save it
+t1 # show it
+
+```
+
+### Testování hypotéz
+
+```{r}
+#| label: vh
+
+dif <- t.test( bdi_gain ~ weight_increased, data = d, var.equal = F, paired = F, alternative = "two.sided" )
+lm <- lm( bdi_gain ~ 1 + weight_gain, data = d )
+
+```
+
+Pacienti, kteří rok po operaci přibrali na váze, skórovali v průměru o `r toczech( rprint( abs(dif$estimate[2]) ) )` bodu nižší BDI-II než před operací zatímco pacienti, kteří rok po operaci nepřibrali na váze, skórovali v průměru o `r toczech( rprint( abs(dif$estimate[1]) ) )` bodu vyšší BDI-II než před operací. Rozdíl mezi těmito průměry nedosáhl statistické významnosti (95% IS `r paste0( "[", paste( toczech( rprint(dif$conf.int) ), collapse = "; " ), "]" )`, t(`r toczech( rprint(dif$parameter) )`) = `r toczech( rprint(dif$statistic) )`, p = `r toczech( rprint(dif$p.value,3) )`) a $VH_1$ tudíž nebyla zamítnuta.
+
+Korelační matice proměnných vyjadřujících pooperační změnu je prezentována v @fig-corr. Korelace mezi pooperační změnou BDI-II a pooperační změnou na váze byla negativní a statisticky významná (r = `r t2[1,"r"]`, 95% IS `r t2[1,"ci"]`, t = `r t2[1,"t"]`, p = `r t2[1,"p"]`). S každým přibraným kilogramem na váze se očekávaná hodnota BDI-II rok po operaci snížila o `r toczech( rprint( abs(lm$coefficients[2]) ) )` bodu (95% IS `r paste0( "[", paste( toczech( rprint( confint(lm)[2, ] ) ), collapse = ";" ), "]" )`, t = `r toczech( rprint( summary(lm)$coefficients[2,"t value"], 3 ) )`, p = `r toczech( rprint( summary(lm)$coefficients[2,"Pr(>|t|)"], 3 ) )`). Dílčí hypotéza $VH_2$ tudíž byla zamítnuta.
+
+![Korelační analýza proměnných vyjadřujících změnu po operaci. Čísla nad hlavní diagonálou vyjadřují hodnotu párového Pearsonova korelačního koeficientu. $*$p < 0,05; ***p < 0,001](figs/corrmat.jpg){#fig-corr}
+
+## Reference
+

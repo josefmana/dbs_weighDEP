@@ -24,12 +24,11 @@ d2 <- read.csv( here("_data","wide_df.csv"), sep = "," )
 
 # IN-HOUSE FUNCTIONS ----
 
-# numbers shinaningans
-rprint <- function( x, dec=2 ) sprintf( paste0("%.",dec,"f"), round( x, dec ) ) # printing rounded numbers
-zerolead <- function(x) sub( "0.", ".", x, fixed = T ) # get rid of leading zero
+# printing rounded numbers
+rprint <- function( x, dec = 2 ) sprintf( paste0("%.",dec,"f"), round( x, dec ) )
 
 # collapse table to a cell
-tabcol <- function(x,na=F) paste( table( x, useNA = if(na) "always" ), collapse = "/" )
+tabcol <- function( x, na = F ) paste( table( x, useNA = if(na) "always" ), collapse = "/" )
 
 # summarise central tendency and variability
 cenvar <-
@@ -39,6 +38,25 @@ cenvar <-
     paste0(
       rprint( do.call( ct,list(x, na.rm = T) ), dec), sep,
       rprint( do.call(var,list(x, na.rm = T) ), dec), end
+    )
+    
+  }
+
+# change scores t-test values extraction
+text <-
+  
+  function(x, d = 2, ci = .95) {
+    
+    t <- t.test( x, mu = 0, alternative = "two.sided", conf.level = ci )
+    
+    return(
+      with(
+        t,
+        c(
+          change = paste0( rprint( estimate, d ), " [", paste( rprint( conf.int, d ), collapse = ", " ), "]" ),
+          test = paste0( "t(", parameter, ") = ", rprint( statistic, d ), "; p ", ifelse( p.value < .001, "< 0.001", paste0( "= ", rprint( p.value, 3 ) ) ) )
+        )
+      )
     )
     
   }
@@ -81,31 +99,23 @@ t1 <-
   
   do.call( rbind.data.frame, . ) %>%
   pivot_wider( names_from = "event", values_from = "val" ) %>%
-  mutate( post = ifelse( var %in% c("Education (years)","Sex (females/males)","Disease duration (years)"), "-", post ) )
-
-#  gt() %>%
-#  cols_align( columns = -1, align = "center" ) %>%
-#  cols_label(
-#    var ~ "",
-#    pre ~ "Pre-surgery",
-#    post ~ "Post-surgery"
-#  ) %>%
-#  tab_source_note( source_note = "LEDD = levodopa equivalent daily dose, BMI = body mass index, BDI-II = Beck Depression Inventory, second edition, DRS-2 = Mattis Dementia Rating Scale, second edition, values represent means ± standard deviations for contiuous variables and frequencies for nominal variables." )
+  mutate( post = ifelse( var %in% c("Education (years)","Sex (females/males)","Disease duration (years)"), "-", post ) ) %>%
+  mutate( change = c( rep("-",5), sapply( c("ledd_gain","weight_gain","bmi_gain","bdi_gain","drs_gain"), function(i) text(d2[[i]])["change"] ) ) ) %>%
+  mutate( test = c( rep("-",5), sapply( c("ledd_gain","weight_gain","bmi_gain","bdi_gain","drs_gain"), function(i) text(d2[[i]])["test"] ) ) )
 
 # save it
-#gtsave( t1, here("tabs","descriptives.docx") )
-write.table( t1, file = here("tabs","descriptives.csv"), sep = ";", row.names = F, quote = F )
+write.table( t1, file = here("tabs","descriptives.csv"), sep = "\t", row.names = F, quote = F )
 
 
 # HYPOTHESES TESTING ----
 
 # prepare data matrix for correlations
 d3 <-
-  d2[ , c("bdi_gain","weight_gain","drs_gain","ledd_gain") ] %>%
-  rename( "BDI-2" = "bdi_gain", "Weight" = "weight_gain", "DRS-2" = "drs_gain", "LEDD" = "ledd_gain" )
+  d2[ , c("bdi_gain","weight_gain","bmi_gain","drs_gain","ledd_gain") ] %>%
+  rename( "BDI-2" = "bdi_gain", "BMI" = "bmi_gain", "Weight" = "weight_gain", "DRS-2" = "drs_gain", "LEDD" = "ledd_gain" )
 
 # compute correlations
-corr <- cor.ci( d3, p = .05, method = "pearson", plot = F )
+corr <- corr.test( d3, alpha = .05, method = "pearson", ci = T )
 
 # prepare jpeg device for figure saving
 jpeg( here("figs","corrmat.jpg"), units = "in", width = 10.9, height = 10.9, res = 300, quality = 100 )
@@ -128,19 +138,55 @@ dev.off()
 # prepare a table with correlation results
 t2 <-
   
-  with( corr, cbind( ci, rho = rho[ lower.tri(rho) ] ) ) %>%
+  with( corr, cbind( ci, t = t[ lower.tri(t) ] ) ) %>%
   apply( ., 2, rprint, 3 ) %>%
   apply( ., 2, function(x) sub( ".", ",", x, fixed = T ) ) %>%
   as.data.frame() %>%
   mutate( pair = rownames(corr$ci), .before = 1 ) %>%
-  relocate( p, .after = 1 ) %>%
-  relocate( rho, .after = 1 )
+  mutate( n = with(corr, n[ lower.tri(n) ] ), ci = paste0("[",lower,"; ",upper,"]") ) %>%
+  select( pair, r, ci, t, n, p )
 
 # save it
-write.table( t2, file = here("tabs","corrs.csv"), sep = ";", row.names = F, quote = F )
+write.table( t2, file = here("tabs","corrs.csv"), sep = "\t", row.names = F, quote = F )
 
 
 # SESSION INFO -----
 
 # write the sessionInfo() into a .txt file
 capture.output( sessionInfo(), file = "stats_envir.txt" )
+
+
+# panel of correlations
+#panel.corr <- function(x, y) {
+#  usr <- par("usr"); on.exit(par(usr))
+#  par(usr = c(0, 1, 0, 1))
+#  r <- cor(x, y)
+#  txt <- paste0("Corr: ", r)
+#  text(0.5, 0.5, txt, cex = 1)
+#}
+
+# panel of histograms
+#panel.hist <- function(x, ...){
+#  usr <- par("usr"); on.exit(par(usr))
+#  par(usr = c(usr[1:2], 0, 1.5) )
+#  h <- hist(x, plot = FALSE)
+#  breaks <- h$breaks
+#  len <- length(breaks)
+#  y <- h$counts/max(h$counts)
+#  rect(breaks[-len], 0, breaks[-1], y, col = "lightblue")
+#}
+
+# panel of scatterplots
+#panel.scat <- function(x, y){
+#  points(x,y, pch = 19, cex = 1, col = "coral")
+#}
+
+# plot
+#pairs(mtcars[, c(1,3:7)],  
+#      lower.panel = panel.scat,
+#      upper.panel = panel.corr,
+#      diag.panel = panel.hist,
+#      labels = c("Miles","Displacement","Horsepower",
+#                 "Rear axle ratio","Weight","1/4 mile time"),
+#      gap = 0.3, 
+#      main = "Scatterplot matrix of `mtcars`")
